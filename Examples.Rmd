@@ -1,0 +1,136 @@
+---
+title: "Examples"
+author: "Fenglong Xie, Yujie Su"
+date: "2023-11-13"
+output: 
+  html_document:
+    toc: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(mlr3)
+library(haven) # read in compressed sas data 
+library(mlr3pipelines)
+library(mlr3learners)
+library(data.table)
+library(mlr3tuning)
+library(paradox)
+library(mlr3viz)
+library(ggpubr)
+library(dplyr)
+library(kableExtra)
+library(skimr)
+library(precrec)
+library(gt)
+skim_with(numeric=list(hist=NULL))
+set.seed(2020)
+```
+
+```{r}
+# setwd(" ")
+```
+
+
+# Readin data
+
+```{r testDataExplore}
+df.test0 <- readRDS("sample_dftest30.RDS")
+gt(head(df.test0)) 
+df.test <- df.test0[,-c(1,2)]
+```
+
+
+```{r createTaskTest, warning = FALSE, message = FALSE}
+# creating tasks
+df.test$death <- 0
+df.test$death[1:10] <- 1 # make the first 10 death=1, target need to be more than 1 level
+
+df.test$death <- as.factor(df.test$death)
+
+task_test = TaskClassif$new(id="test", backend=df.test, target = "death", positive="1")
+print(task_test)
+```
+
+
+```{r imputeMissing3, warning = FALSE, message = FALSE}
+# impute missing data
+# There is missing data in the train data, need to do impute even no missing data in the test
+task_test$missings()
+# imputation
+po_indicator=po('missind',param_vals = list(affect_columns = selector_type(c("numeric", "integer")), type = "numeric"))
+gr=gunion(list(po_indicator, po("imputehist")))
+gr=gr%>>% po("featureunion")
+# train the whole graph
+task_test_imputed = gr$clone()$train(task_test)[[1]]
+# task_test1_imputed$missings() # check missing data
+```
+
+# Read in model
+
+```{r, warning = FALSE, message = FALSE}
+at_dt <- readRDS("at_dt.RDS")
+at_rf <- readRDS("at_rf.RDS")
+at_er <- readRDS("at_er.RDS")
+at_xgb <- readRDS("at_xgb.RDS")
+```
+
+# Predict
+
+## DT model
+
+```{r DTModelPerformance}
+# predicting 
+prediction_dt_test = at_dt$predict(task_test_imputed)
+```
+
+## RF model
+
+```{r RFModelPerformance, warning = FALSE, message = FALSE}
+# predicting 
+prediction_rf_test = at_rf$predict(task_test_imputed)
+```
+
+## ER model
+
+```{r ERModelPerformance}
+# predicting 
+prediction_er_test = at_er$predict(task_test_imputed)
+```
+
+## XGB model
+
+```{r XGBModelPerformance3}
+# predicting 
+prediction_xgb_test = at_xgb$predict(task_test_imputed)
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+prediction_dt_test$response -> dt_predict
+prediction_rf_test$response -> rf_predict
+prediction_er_test$response -> er_predict
+prediction_xgb_test$response -> xgb_predict
+
+
+df.result <- data.table(PATID = df.test0$PATID,
+                        yr = df.test0$yr,
+                        dt_predict = dt_predict, 
+                        rf_predict = rf_predict, 
+                        xgb_predict = xgb_predict, 
+                        er_predict = er_predict)
+
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+gt(head(df.result))
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+sessionInfo()
+```
+
+
